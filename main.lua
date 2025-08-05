@@ -1,86 +1,73 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local SendToBlock = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SendToBlock")
 local Civilians = Workspace:WaitForChild("Civilians")
-local sendToBlock = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SendToBlock")
 
-local trackedModels = {}
-
--- Determine infection status based on sensor values (ESP logic)
-local function determineStatus(model)
-	local breathing = (model:FindFirstChild("BreathingNoise") or {}).Value
-	local contaminated = (model:FindFirstChild("HasContaminatedItems") or {}).Value == true
-	local bpm = tonumber((model:FindFirstChild("BPM") or {}).Value) or 0
-	local temp = tonumber((model:FindFirstChild("Temp") or {}).Value) or 0
-
-	-- 🔴 Liquidation conditions
-	if breathing == "Zombie Breathing" or breathing == "Critical" then
-		return "Zombie"
+local function getBreathingStatus(model)
+	local breath = model:FindFirstChild("BreathingNoise")
+	if breath then
+		local val = breath.Value
+		if val == "Safe" then return "Safe"
+		elseif val == "Critical" or val == "Zombie Breathing" then return "Bad" end
 	end
-	if contaminated then
-		return "Zombie"
-	end
-
-	-- 🟡 Quarantine conditions
-	if bpm >= 140 or temp >= 100 then
-		return "Quarantine"
-	end
-
-	-- 🟢 Safe
-	return "Safe"
+	return ""
 end
 
--- Fire correct RemoteEvent
-local function autoJudge(model)
-	local category = determineStatus(model)
+local function getClassification(model)
+	local status = model:FindFirstChild("SymptomStatus")
+	local bpm = model:FindFirstChild("BPM")
+	local temp = model:FindFirstChild("Temp")
+	local contam = model:FindFirstChild("HasContaminatedItems")
+	local breath = getBreathingStatus(model)
 
-	if category == "Zombie" then
-		sendToBlock:FireServer("Liquidation")
-	elseif category == "Quarantine" then
-		sendToBlock:FireServer("Quarantine")
-	elseif category == "Safe" then
-		sendToBlock:FireServer("Survivor")
+	-- Priority: Infected → Liquidation → Quarantine → Safe
+	if status and status.Value == "Zombie" then
+		return "Liquidation"
 	end
-end
 
--- Handle individual model
-local function handleModel(model)
-	if not model:IsA("Model") or trackedModels[model] then return end
+	if contam and contam:IsA("BoolValue") and contam.Value then
+		return "Liquidation"
+	end
 
-	local humanoid = model:FindFirstChildWhichIsA("Humanoid")
-	if not humanoid then return end
+	if bpm and temp then
+		local bpmVal = tonumber(bpm.Value)
+		local tempVal = tonumber(temp.Value)
 
-	trackedModels[model] = true
-	autoJudge(model)
-
-	local connections = {}
-
-	local function track(obj)
-		if obj then
-			local conn = obj:GetPropertyChangedSignal("Value"):Connect(function()
-				autoJudge(model)
-			end)
-			table.insert(connections, conn)
+		if bpmVal and (bpmVal < 90 or bpmVal > 140) then
+			return "Quarantine"
+		end
+		if tempVal and tempVal >= 100 then
+			return "Quarantine"
 		end
 	end
 
-	for _, name in ipairs({ "BreathingNoise", "HasContaminatedItems", "BPM", "Temp" }) do
-		track(model:FindFirstChild(name))
+	if breath == "Bad" then
+		return "Quarantine"
 	end
 
-	humanoid.Died:Connect(function()
-		for _, conn in ipairs(connections) do conn:Disconnect() end
-		trackedModels[model] = nil
+	return "Survivor"
+end
+
+local alreadyProcessed = {}
+
+local function process(model)
+	if alreadyProcessed[model] then return end
+	alreadyProcessed[model] = true
+
+	local classification = getClassification(model)
+	SendToBlock:FireServer(classification)
+end
+
+-- Handle current civilians
+for _, model in ipairs(Civilians:GetChildren()) do
+	task.defer(function()
+		process(model)
 	end)
 end
 
--- Handle existing civilians
-for _, model in ipairs(Civilians:GetChildren()) do
-	handleModel(model)
-end
-
--- Handle new civilians
-Civilians.ChildAdded:Connect(function(child)
-	task.wait(0.1)
-	handleModel(child)
+-- Handle future civilians
+Civilians.ChildAdded:Connect(function(model)
+	task.wait(0.2)
+	process(model)
 end)
