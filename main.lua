@@ -347,6 +347,8 @@ local function updateESP(model, status)
 end
 
 local trackedModels = {}
+local lastJudgedTime = {}
+local JUDGE_COOLDOWN = 3 -- seconds
 
 -- Auto-judge system for determining civilian status
 local function autoJudgeCivilian(model)
@@ -412,17 +414,17 @@ local function autoJudgeCivilian(model)
 	end
 end
 
--- Auto-judge trigger function
+-- Auto-judge trigger function with cooldown
 local function triggerAutoJudge(model)
 	if not model or not model:IsA("Model") then return end
-	
+	local now = tick()
+	if lastJudgedTime[model] and now - lastJudgedTime[model] < JUDGE_COOLDOWN then return end
+	lastJudgedTime[model] = now
 	-- Wait a bit for values to update
-	task.wait(0.5)
-	
+	task.wait(0.2)
 	-- Check if model still exists and has required components
 	local status = model:FindFirstChild("SymptomStatus")
 	local humanoid = model:FindFirstChildWhichIsA("Humanoid")
-	
 	if status and humanoid and humanoid.Health > 0 then
 		autoJudgeCivilian(model)
 	end
@@ -478,9 +480,23 @@ local function handleModel(model)
 
 		trackedModels[model] = nil
 
+		lastJudgedTime[model] = nil
+
 	end)
 
 end
+
+-- Periodic auto-judge loop for all tracked civilians
+task.spawn(function()
+    while true do
+        for model, _ in pairs(trackedModels) do
+            if model and model.Parent then
+                triggerAutoJudge(model)
+            end
+        end
+        task.wait(1)
+    end
+end)
 
 for _, model in ipairs(Civilians:GetChildren()) do
 
