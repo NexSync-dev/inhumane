@@ -371,48 +371,53 @@ local function autoJudgeCivilian(model)
 	
 	print("Judging " .. model.Name .. " - Status: " .. status.Value .. ", BPM: " .. bpmVal .. ", Temp: " .. tempVal .. ", Breathing: " .. breathingVal .. ", Contaminated: " .. tostring(hasContaminated))
 	
-	-- Auto-judge logic
-	local shouldLiquidation = false
-	local shouldQuarantine = false
-	local shouldSurvivor = false
+	-- FIXED LOGIC - Based on actual game mechanics
+	local judgment = "Survivor" -- Default to safe
 	
-	-- Liquidation conditions (most severe)
-	if status.Value == "Zombie" or 
-	   breathingVal == "Zombie Breathing" or
-	   (bpmVal > 160 and tempVal > 105) or
-	   (hasContaminated and bpmVal > 140) then
-		shouldLiquidation = true
-		print("  -> Should Liquidation")
-	end
+	-- Check for Zombie/Infected status first (highest priority)
+	if status.Value == "Zombie" or breathingVal == "Zombie Breathing" then
+		judgment = "Liquidation"
+		print("  -> ZOMBIE DETECTED - Liquidation")
 	
-	-- Quarantine conditions (moderate)
-	if not shouldLiquidation and (
-		status.Value == "Quarantine" or
-		bpmVal > 140 or
-		tempVal > 100 or
-		breathingVal == "Critical" or
-		hasContaminated
-	) then
-		shouldQuarantine = true
-		print("  -> Should Quarantine")
-	end
+	-- Check for Quarantine status
+	elseif status.Value == "Quarantine" then
+		judgment = "Quarantine"
+		print("  -> Quarantine status - Quarantine")
 	
-	-- Survivor conditions (safe) - Made less restrictive
-	if not shouldLiquidation and not shouldQuarantine then
-		shouldSurvivor = true
-		print("  -> Should Survivor")
+	-- Check for Safe status
+	elseif status.Value == "Safe" then
+		judgment = "Survivor"
+		print("  -> Safe status - Survivor")
+	
+	-- If no clear status, check vital signs
+	else
+		-- High risk conditions for liquidation
+		if bpmVal > 160 or tempVal > 105 or (hasContaminated and bpmVal > 140) then
+			judgment = "Liquidation"
+			print("  -> Critical vitals - Liquidation")
+		
+		-- Moderate risk conditions for quarantine
+		elseif bpmVal > 140 or tempVal > 100 or breathingVal == "Critical" or hasContaminated then
+			judgment = "Quarantine"
+			print("  -> Elevated vitals - Quarantine")
+		
+		-- Normal vitals = safe
+		else
+			judgment = "Survivor"
+			print("  -> Normal vitals - Survivor")
+		end
 	end
 	
 	-- Execute the appropriate remote call
-	if shouldLiquidation then
+	if judgment == "Liquidation" then
 		local args = {[1] = "Liquidation"}
 		game:GetService("ReplicatedStorage").Remotes.SendToBlock:FireServer(unpack(args))
 		print("Auto-judge: Liquidation for " .. model.Name)
-	elseif shouldQuarantine then
+	elseif judgment == "Quarantine" then
 		local args = {[1] = "Quarantine"}
 		game:GetService("ReplicatedStorage").Remotes.SendToBlock:FireServer(unpack(args))
 		print("Auto-judge: Quarantine for " .. model.Name)
-	elseif shouldSurvivor then
+	elseif judgment == "Survivor" then
 		local args = {[1] = "Survivor"}
 		game:GetService("ReplicatedStorage").Remotes.SendToBlock:FireServer(unpack(args))
 		print("Auto-judge: Survivor for " .. model.Name)
