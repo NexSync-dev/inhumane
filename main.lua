@@ -353,7 +353,10 @@ local JUDGE_COOLDOWN = 3 -- seconds
 -- Auto-judge system for determining civilian status
 local function autoJudgeCivilian(model)
 	local status = model:FindFirstChild("SymptomStatus")
-	if not status then return end
+	if not status then 
+		print("No SymptomStatus found for " .. model.Name)
+		return 
+	end
 	
 	local bpm = model:FindFirstChild("BPM")
 	local temp = model:FindFirstChild("Temp")
@@ -366,6 +369,8 @@ local function autoJudgeCivilian(model)
 	local breathingVal = breathing and breathing.Value or ""
 	local hasContaminated = contaminated and contaminated.Value or false
 	
+	print("Judging " .. model.Name .. " - Status: " .. status.Value .. ", BPM: " .. bpmVal .. ", Temp: " .. tempVal .. ", Breathing: " .. breathingVal .. ", Contaminated: " .. tostring(hasContaminated))
+	
 	-- Auto-judge logic
 	local shouldLiquidation = false
 	local shouldQuarantine = false
@@ -377,6 +382,7 @@ local function autoJudgeCivilian(model)
 	   (bpmVal > 160 and tempVal > 105) or
 	   (hasContaminated and bpmVal > 140) then
 		shouldLiquidation = true
+		print("  -> Should Liquidation")
 	end
 	
 	-- Quarantine conditions (moderate)
@@ -388,14 +394,13 @@ local function autoJudgeCivilian(model)
 		hasContaminated
 	) then
 		shouldQuarantine = true
+		print("  -> Should Quarantine")
 	end
 	
-	-- Survivor conditions (safe)
-	if not shouldLiquidation and not shouldQuarantine and (
-		status.Value == "Safe" or
-		(bpmVal <= 140 and tempVal <= 100 and breathingVal == "Safe" and not hasContaminated)
-	) then
+	-- Survivor conditions (safe) - Made less restrictive
+	if not shouldLiquidation and not shouldQuarantine then
 		shouldSurvivor = true
+		print("  -> Should Survivor")
 	end
 	
 	-- Execute the appropriate remote call
@@ -418,15 +423,27 @@ end
 local function triggerAutoJudge(model)
 	if not model or not model:IsA("Model") then return end
 	local now = tick()
-	if lastJudgedTime[model] and now - lastJudgedTime[model] < JUDGE_COOLDOWN then return end
+	if lastJudgedTime[model] and now - lastJudgedTime[model] < JUDGE_COOLDOWN then 
+		print("Skipping " .. model.Name .. " - on cooldown")
+		return 
+	end
+	
 	lastJudgedTime[model] = now
+	print("Triggering auto-judge for " .. model.Name)
+	
 	-- Wait a bit for values to update
 	task.wait(0.2)
+	
 	-- Check if model still exists and has required components
 	local status = model:FindFirstChild("SymptomStatus")
 	local humanoid = model:FindFirstChildWhichIsA("Humanoid")
+	
 	if status and humanoid and humanoid.Health > 0 then
-		autoJudgeCivilian(model)
+		pcall(function()
+			autoJudgeCivilian(model)
+		end)
+	else
+		print("Model " .. model.Name .. " missing required components or dead")
 	end
 end
 
@@ -489,12 +506,17 @@ end
 -- Periodic auto-judge loop for all tracked civilians
 task.spawn(function()
     while true do
+        print("Periodic check - " .. #trackedModels .. " models tracked")
         for model, _ in pairs(trackedModels) do
             if model and model.Parent then
                 triggerAutoJudge(model)
+            else
+                print("Removing invalid model from tracking")
+                trackedModels[model] = nil
+                lastJudgedTime[model] = nil
             end
         end
-        task.wait(1)
+        task.wait(2) -- Increased to 2 seconds to reduce spam
     end
 end)
 
