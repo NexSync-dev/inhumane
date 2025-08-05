@@ -347,110 +347,6 @@ local function updateESP(model, status)
 end
 
 local trackedModels = {}
-local lastJudgedTime = {}
-local JUDGE_COOLDOWN = 3 -- seconds
-
--- Auto-judge system for determining civilian status
-local function autoJudgeCivilian(model)
-	local status = model:FindFirstChild("SymptomStatus")
-	if not status then 
-		print("No SymptomStatus found for " .. model.Name)
-		return 
-	end
-	
-	local bpm = model:FindFirstChild("BPM")
-	local temp = model:FindFirstChild("Temp")
-	local breathing = model:FindFirstChild("BreathingNoise")
-	local contaminated = model:FindFirstChild("HasContaminatedItems")
-	
-	-- Get values
-	local bpmVal = bpm and tonumber(bpm.Value) or 0
-	local tempVal = temp and tonumber(temp.Value) or 0
-	local breathingVal = breathing and breathing.Value or ""
-	local hasContaminated = contaminated and contaminated.Value or false
-	
-	print("Judging " .. model.Name .. " - Status: " .. status.Value .. ", BPM: " .. bpmVal .. ", Temp: " .. tempVal .. ", Breathing: " .. breathingVal .. ", Contaminated: " .. tostring(hasContaminated))
-	
-	-- FIXED LOGIC - Based on actual game mechanics
-	local judgment = "Survivor" -- Default to safe
-	
-	-- Check for Zombie/Infected status first (highest priority)
-	if status.Value == "Zombie" or breathingVal == "Zombie Breathing" then
-		judgment = "Liquidation"
-		print("  -> ZOMBIE DETECTED - Liquidation")
-	
-	-- Check for Quarantine status
-	elseif status.Value == "Quarantine" then
-		judgment = "Quarantine"
-		print("  -> Quarantine status - Quarantine")
-	
-	-- Check for Safe status
-	elseif status.Value == "Safe" then
-		judgment = "Survivor"
-		print("  -> Safe status - Survivor")
-	
-	-- If no clear status, check vital signs
-	else
-		-- High risk conditions for liquidation
-		if bpmVal > 160 or tempVal > 105 or (hasContaminated and bpmVal > 140) then
-			judgment = "Liquidation"
-			print("  -> Critical vitals - Liquidation")
-		
-		-- Moderate risk conditions for quarantine
-		elseif bpmVal > 140 or tempVal > 100 or breathingVal == "Critical" or hasContaminated then
-			judgment = "Quarantine"
-			print("  -> Elevated vitals - Quarantine")
-		
-		-- Normal vitals = safe
-		else
-			judgment = "Survivor"
-			print("  -> Normal vitals - Survivor")
-		end
-	end
-	
-	-- Execute the appropriate remote call
-	if judgment == "Liquidation" then
-		local args = {[1] = "Liquidation"}
-		game:GetService("ReplicatedStorage").Remotes.SendToBlock:FireServer(unpack(args))
-		print("Auto-judge: Liquidation for " .. model.Name)
-	elseif judgment == "Quarantine" then
-		local args = {[1] = "Quarantine"}
-		game:GetService("ReplicatedStorage").Remotes.SendToBlock:FireServer(unpack(args))
-		print("Auto-judge: Quarantine for " .. model.Name)
-	elseif judgment == "Survivor" then
-		local args = {[1] = "Survivor"}
-		game:GetService("ReplicatedStorage").Remotes.SendToBlock:FireServer(unpack(args))
-		print("Auto-judge: Survivor for " .. model.Name)
-	end
-end
-
--- Auto-judge trigger function with cooldown
-local function triggerAutoJudge(model)
-	if not model or not model:IsA("Model") then return end
-	local now = tick()
-	if lastJudgedTime[model] and now - lastJudgedTime[model] < JUDGE_COOLDOWN then 
-		print("Skipping " .. model.Name .. " - on cooldown")
-		return 
-	end
-	
-	lastJudgedTime[model] = now
-	print("Triggering auto-judge for " .. model.Name)
-	
-	-- Wait a bit for values to update
-	task.wait(0.2)
-	
-	-- Check if model still exists and has required components
-	local status = model:FindFirstChild("SymptomStatus")
-	local humanoid = model:FindFirstChildWhichIsA("Humanoid")
-	
-	if status and humanoid and humanoid.Health > 0 then
-		pcall(function()
-			autoJudgeCivilian(model)
-		end)
-	else
-		print("Model " .. model.Name .. " missing required components or dead")
-	end
-end
 
 local function handleModel(model)
 
@@ -469,22 +365,12 @@ local function handleModel(model)
 	trackedModels[model] = true
 
 	updateESP(model, status.Value)
-	
-	-- Auto-judge when model is first detected
-	task.spawn(function()
-		triggerAutoJudge(model)
-	end)
 
 	local connStatus
 
 	connStatus = status:GetPropertyChangedSignal("Value"):Connect(function()
 
 		updateESP(model, status.Value)
-		
-		-- Auto-judge when status changes
-		task.spawn(function()
-			triggerAutoJudge(model)
-		end)
 
 	end)
 
@@ -502,28 +388,9 @@ local function handleModel(model)
 
 		trackedModels[model] = nil
 
-		lastJudgedTime[model] = nil
-
 	end)
 
 end
-
--- Periodic auto-judge loop for all tracked civilians
-task.spawn(function()
-    while true do
-        print("Periodic check - " .. #trackedModels .. " models tracked")
-        for model, _ in pairs(trackedModels) do
-            if model and model.Parent then
-                triggerAutoJudge(model)
-            else
-                print("Removing invalid model from tracking")
-                trackedModels[model] = nil
-                lastJudgedTime[model] = nil
-            end
-        end
-        task.wait(2) -- Increased to 2 seconds to reduce spam
-    end
-end)
 
 for _, model in ipairs(Civilians:GetChildren()) do
 
