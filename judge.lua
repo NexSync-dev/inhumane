@@ -1,17 +1,30 @@
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+-- Roblox compatibility shims for Color3, task, game, and wait (for linting outside Roblox)
+if not Color3 then
+    Color3 = {
+        fromRGB = function(r, g, b)
+            return {R = r/255, G = g/255, B = b/255}
+        end
+    }
+end
+if not task then
+    task = {wait = function(t) if wait then return wait(t) end end}
+end
+if not wait then
+    function wait(t) end
+end
+if not game then
+    game = {
+        GetService = function(_, name)
+            return {}
+        end
+    }
+end
+
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
+local SendToBlockRemote = ReplicatedStorage.Remotes and ReplicatedStorage.Remotes.SendToBlock
 
--- Get the required services and folders
-local Civilians = Workspace:WaitForChild("Civilians")
-local SendToBlockRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SendToBlock")
-
--- Track which models we've already processed
-local processedModels = {}
-
--- Detection functions from ESP script
+-- Utility functions for detection mode
 local function getColor(value, low, mid, high)
     value = tonumber(value)
     if not value then return Color3.fromRGB(150,150,150) end
@@ -38,190 +51,92 @@ local function getBreathingStatus(model)
     return "", Color3.fromRGB(150,150,150)
 end
 
--- Comprehensive status detection function
-local function determineActualStatus(model)
-    -- First check SymptomStatus if it exists
-    local symptomStatus = model:FindFirstChild("SymptomStatus")
-    if symptomStatus then
-        local status = symptomStatus.Value
-        if status == "Zombie" then
-            return "Infected"
-        elseif status == "Safe" then
-            return "Safe"
-        elseif status == "Quarantine" then
-            -- For quarantine, do additional checks to see if they should really be liquidated
-            local bpm = model:FindFirstChild("BPM")
-            local temp = model:FindFirstChild("Temp")
-            local breathingVal, breathingColor = getBreathingStatus(model)
-            local contamValue = model:FindFirstChild("HasContaminatedItems")
-            
-            local bpmVal = bpm and tonumber(bpm.Value) or 0
-            local tempVal = temp and tonumber(temp.Value) or 0
-            
-            -- Check for critical conditions that warrant liquidation
-            local isCritical = false
-            
-            -- Critical BPM (too high)
-            if bpmVal > 140 then
-                isCritical = true
-            end
-            
-            -- Critical temperature
-            if tempVal > 104 then
-                isCritical = true
-            end
-            
-            -- Critical breathing
-            if breathingVal == "Bad" then
-                isCritical = true
-            end
-            
-            -- Has contaminated items
-            if contamValue and contamValue:IsA("BoolValue") and contamValue.Value then
-                isCritical = true
-            end
-            
-            if isCritical then
-                return "Infected" -- Send to liquidation
-            else
-                return "Quarantine" -- Keep in quarantine
-            end
-        end
+local Civilians = Workspace:WaitForChild("Civilians")
+
+-- Detection mode: handle model status (no ESP/UI)
+local trackedModels = {}
+
+local function handleModel(model)
+    if not model.IsA or not model:IsA("Model") then return end
+    if trackedModels[model] then return end
+    local humanoid = model.FindFirstChildWhichIsA and model:FindFirstChildWhichIsA("Humanoid")
+    local status = model.FindFirstChild and model:FindFirstChild("SymptomStatus")
+    local root = model.FindFirstChild and model:FindFirstChild("HumanoidRootPart")
+    if not (humanoid and status and root) then return end
+    trackedModels[model] = true
+    -- Here you can add detection logic, e.g., print or log status
+    print("[Detection] Model:", model.Name, "Status:", status.Value)
+    -- Listen for status changes
+    local connStatus
+    local connDied
+    if status.GetPropertyChangedSignal then
+        connStatus = status:GetPropertyChangedSignal("Value"):Connect(function()
+            print("[Detection] Model:", model.Name, "Status changed to:", status.Value)
+        end)
     end
-    
-    -- Fallback: Check individual components if SymptomStatus doesn't exist
-    local bpm = model:FindFirstChild("BPM")
-    local temp = model:FindFirstChild("Temp")
-    local breathingVal, breathingColor = getBreathingStatus(model)
-    local contamValue = model:FindFirstChild("HasContaminatedItems")
-    
-    local bpmVal = bpm and tonumber(bpm.Value) or 0
-    local tempVal = temp and tonumber(temp.Value) or 0
-    
-    -- Determine status based on vital signs
-    local isCritical = false
-    local hasSymptoms = false
-    
-    -- Critical conditions (liquidation)
-    if bpmVal > 140 or tempVal > 104 or breathingVal == "Bad" then
-        isCritical = true
+    if humanoid and humanoid.Died and humanoid.Died.Connect then
+        connDied = humanoid.Died:Connect(function()
+            if connStatus and connStatus.Disconnect then connStatus:Disconnect() end
+            if connDied and connDied.Disconnect then connDied:Disconnect() end
+            trackedModels[model] = nil
+        end)
     end
-    
-    -- Has contaminated items (liquidation)
-    if contamValue and contamValue:IsA("BoolValue") and contamValue.Value then
-        isCritical = true
-    end
-    
-    -- Mild symptoms (quarantine)
-    if (bpmVal > 90 and bpmVal <= 140) or (tempVal >= 100 and tempVal <= 104) then
-        hasSymptoms = true
-    end
-    
-    if isCritical then
-        return "Infected"
-    elseif hasSymptoms then
-        return "Quarantine"
-    else
-        return "Safe"
+    if model.AncestryChanged and model.AncestryChanged.Connect then
+        model.AncestryChanged:Connect(function(_, parent)
+            if not parent then
+                if connStatus and connStatus.Disconnect then connStatus:Disconnect() end
+                if connDied and connDied.Disconnect then connDied:Disconnect() end
+                trackedModels[model] = nil
+            end
+        end)
     end
 end
 
--- Auto-judge function for the first person in line
-local function judgeFirstPerson()
-    -- Get the first civilian in the folder
-    local firstCivilian = Civilians:GetChildren()[1]
-    
-    if not firstCivilian or not firstCivilian:IsA("Model") then
-        return
+if Civilians and Civilians.GetChildren then
+    for _, model in ipairs(Civilians:GetChildren()) do
+        handleModel(model)
     end
-    
-    local humanoid = firstCivilian:FindFirstChildWhichIsA("Humanoid")
-    local status = firstCivilian:FindFirstChild("SymptomStatus")
-    local root = firstCivilian:FindFirstChild("HumanoidRootPart")
-    
-    if not (humanoid and status and root) then 
-        return 
+    if Civilians.ChildAdded and Civilians.ChildAdded.Connect then
+        Civilians.ChildAdded:Connect(function(child)
+            task.wait(0.1)
+            handleModel(child)
+        end)
     end
-    
-    -- Check if this person was already judged
-    if processedModels[firstCivilian] then
-        return
+end
+
+local processed = {}
+
+local function getBlockForStatus(status)
+    if status == "Safe" then
+        return "Survivor"
+    elseif status == "Quarantine" then
+        return "Quarantine"
+    elseif status == "Infected" then
+        return "Liquidation"
     end
-    
-    pcall(function()
-        -- Use comprehensive detection instead of just SymptomStatus
-        local actualStatus = determineActualStatus(firstCivilian)
-        
-        -- Get individual values for debug output
-        local symptomStatus = firstCivilian:FindFirstChild("SymptomStatus")
-        local bpm = firstCivilian:FindFirstChild("BPM")
-        local temp = firstCivilian:FindFirstChild("Temp")
-        local breathingVal, breathingColor = getBreathingStatus(firstCivilian)
-        local contamValue = firstCivilian:FindFirstChild("HasContaminatedItems")
-        
-        local bpmVal = bpm and bpm.Value or "N/A"
-        local tempVal = temp and temp.Value or "N/A"
-        local contamStatus = contamValue and contamValue:IsA("BoolValue") and contamValue.Value or false
-        local symptomVal = symptomStatus and symptomStatus.Value or "N/A"
-        
-        -- Debug: Print comprehensive status info
-        print("DEBUG: " .. firstCivilian.Name .. " Analysis:")
-        print("  SymptomStatus: " .. tostring(symptomVal))
-        print("  BPM: " .. tostring(bpmVal))
-        print("  Temp: " .. tostring(tempVal))
-        print("  Breathing: " .. tostring(breathingVal))
-        print("  Contaminated: " .. tostring(contamStatus))
-        print("  Final Decision: " .. actualStatus)
-        
-        if actualStatus == "Infected" then
-            -- Send infected to Liquidation
-            local args = {
-                [1] = "Liquidation"
-            }
-            SendToBlockRemote:FireServer(unpack(args))
-            print("Judged " .. firstCivilian.Name .. " -> Liquidation (Infected)")
-            
-        elseif actualStatus == "Safe" then
-            -- Send safe to Survivor
-            local args = {
-                [1] = "Survivor"
-            }
-            SendToBlockRemote:FireServer(unpack(args))
-            print("Judged " .. firstCivilian.Name .. " -> Survivor (Safe)")
-            
-        elseif actualStatus == "Quarantine" then
-            -- Send quarantine to Quarantine
-            local args = {
-                [1] = "Quarantine"
-            }
-            SendToBlockRemote:FireServer(unpack(args))
-            print("Judged " .. firstCivilian.Name .. " -> Quarantine")
-        else
-            -- Debug: Show what unrecognized status we got
-            print("WARNING: Unrecognized final status '" .. tostring(actualStatus) .. "' for " .. firstCivilian.Name)
+    return nil
+end
+
+-- Main auto-judge loop
+if Civilians and Civilians.GetChildren and SendToBlockRemote and SendToBlockRemote.FireServer then
+    task.spawn(function()
+        while true do
+            local found = false
+            for _, model in ipairs(Civilians:GetChildren()) do
+                if not processed[model] and model.FindFirstChild and model:FindFirstChild("SymptomStatus") then
+                    local statusObj = model:FindFirstChild("SymptomStatus")
+                    local status = statusObj and statusObj.Value
+                    local block = getBlockForStatus(status)
+                    if block then
+                        processed[model] = true
+                        print("[AutoJudge] Sending", model.Name, "to block:", block)
+                        SendToBlockRemote:FireServer(block)
+                        found = true
+                        break
+                    end
+                end
+            end
+            task.wait(3.5)
         end
-        
-        -- Mark as processed
-        processedModels[firstCivilian] = true
     end)
 end
-
--- Continuous monitoring loop to judge the first person
-task.spawn(function()
-    while true do
-        judgeFirstPerson()
-        task.wait(1) -- Check every second for new first person
-    end
-end)
-
--- Clean up processed models when they're removed
-Civilians.ChildRemoved:Connect(function(child)
-    if processedModels[child] then
-        processedModels[child] = nil
-    end
-end)
-
-print("Auto-Judge Script Loaded!")
-print("Safe -> Survivor")
-print("Quarantine -> Quarantine") 
-print("Infected -> Liquidation")
