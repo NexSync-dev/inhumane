@@ -149,7 +149,7 @@ if Civilians and Civilians.GetChildren and SendToBlockRemote and SendToBlockRemo
                     SendToBlockRemote:FireServer(block)
                 end
             end
-            task.wait(4)
+            task.wait(3)
         end
     end)
 end
