@@ -149,12 +149,31 @@ local function judgeFirstPerson()
     end
     
     pcall(function()
-        local currentStatus = status.Value
+        -- Use comprehensive detection instead of just SymptomStatus
+        local actualStatus = determineActualStatus(firstCivilian)
         
-        -- Debug: Print what we're actually reading
-        print("DEBUG: " .. firstCivilian.Name .. " has status: '" .. tostring(currentStatus) .. "'")
+        -- Get individual values for debug output
+        local symptomStatus = firstCivilian:FindFirstChild("SymptomStatus")
+        local bpm = firstCivilian:FindFirstChild("BPM")
+        local temp = firstCivilian:FindFirstChild("Temp")
+        local breathingVal, breathingColor = getBreathingStatus(firstCivilian)
+        local contamValue = firstCivilian:FindFirstChild("HasContaminatedItems")
         
-        if currentStatus == "Zombie" then
+        local bpmVal = bpm and bpm.Value or "N/A"
+        local tempVal = temp and temp.Value or "N/A"
+        local contamStatus = contamValue and contamValue:IsA("BoolValue") and contamValue.Value or false
+        local symptomVal = symptomStatus and symptomStatus.Value or "N/A"
+        
+        -- Debug: Print comprehensive status info
+        print("DEBUG: " .. firstCivilian.Name .. " Analysis:")
+        print("  SymptomStatus: " .. tostring(symptomVal))
+        print("  BPM: " .. tostring(bpmVal))
+        print("  Temp: " .. tostring(tempVal))
+        print("  Breathing: " .. tostring(breathingVal))
+        print("  Contaminated: " .. tostring(contamStatus))
+        print("  Final Decision: " .. actualStatus)
+        
+        if actualStatus == "Infected" then
             -- Send infected to Liquidation
             local args = {
                 [1] = "Liquidation"
@@ -162,7 +181,7 @@ local function judgeFirstPerson()
             SendToBlockRemote:FireServer(unpack(args))
             print("Judged " .. firstCivilian.Name .. " -> Liquidation (Infected)")
             
-        elseif currentStatus == "Safe" then
+        elseif actualStatus == "Safe" then
             -- Send safe to Survivor
             local args = {
                 [1] = "Survivor"
@@ -170,7 +189,7 @@ local function judgeFirstPerson()
             SendToBlockRemote:FireServer(unpack(args))
             print("Judged " .. firstCivilian.Name .. " -> Survivor (Safe)")
             
-        elseif currentStatus == "Quarantine" then
+        elseif actualStatus == "Quarantine" then
             -- Send quarantine to Quarantine
             local args = {
                 [1] = "Quarantine"
@@ -179,7 +198,7 @@ local function judgeFirstPerson()
             print("Judged " .. firstCivilian.Name .. " -> Quarantine")
         else
             -- Debug: Show what unrecognized status we got
-            print("WARNING: Unrecognized status '" .. tostring(currentStatus) .. "' for " .. firstCivilian.Name)
+            print("WARNING: Unrecognized final status '" .. tostring(actualStatus) .. "' for " .. firstCivilian.Name)
         end
         
         -- Mark as processed
