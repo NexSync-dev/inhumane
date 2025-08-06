@@ -111,7 +111,7 @@ local function getBlockForStatus(status)
         return "Survivor"
     elseif status == "Quarantine" then
         return "Quarantine"
-    elseif status == "Infected" then
+    elseif status == "Infected" or status == "Zombie" then
         return "Liquidation"
     end
     return nil
