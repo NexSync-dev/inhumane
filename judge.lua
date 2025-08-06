@@ -139,7 +139,7 @@ if Civilians and Civilians.GetChildren and SendToBlockRemote and SendToBlockRemo
                     end
                 end
             end
-            if closestModel and closestDist <= 10 then -- Only judge if within 10 studs
+            if closestModel then -- Always judge the closest
                 local statusObj = closestModel:FindFirstChild("SymptomStatus")
                 local status = statusObj and statusObj.Value
                 local block = getBlockForStatus(status)
