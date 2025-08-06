@@ -117,26 +117,39 @@ local function getBlockForStatus(status)
     return nil
 end
 
+local judgeStationPart = nil
+if Workspace.Map and Workspace.Map.GetChildren then
+    local mapChildren = Workspace.Map:GetChildren()
+    judgeStationPart = mapChildren[103]
+end
+
 -- Main auto-judge loop
-if Civilians and Civilians.GetChildren and SendToBlockRemote and SendToBlockRemote.FireServer then
+if Civilians and Civilians.GetChildren and SendToBlockRemote and SendToBlockRemote.FireServer and judgeStationPart then
     task.spawn(function()
         while true do
-            local found = false
+            local closestModel = nil
+            local closestDist = math.huge
             for _, model in ipairs(Civilians:GetChildren()) do
-                if not processed[model] and model.FindFirstChild and model:FindFirstChild("SymptomStatus") then
-                    local statusObj = model:FindFirstChild("SymptomStatus")
-                    local status = statusObj and statusObj.Value
-                    local block = getBlockForStatus(status)
-                    if block then
-                        processed[model] = true
-                        print("[AutoJudge] Sending", model.Name, "to block:", block)
-                        SendToBlockRemote:FireServer(block)
-                        found = true
-                        break
+                if not processed[model] and model.FindFirstChild and model:FindFirstChild("HumanoidRootPart") and model:FindFirstChild("SymptomStatus") then
+                    local root = model:FindFirstChild("HumanoidRootPart")
+                    local dist = (root.Position - judgeStationPart.Position).Magnitude
+                    if dist < closestDist then
+                        closestDist = dist
+                        closestModel = model
                     end
                 end
             end
-            task.wait(3.5)
+            if closestModel and closestDist <= 10 then -- Only judge if within 10 studs
+                local statusObj = closestModel:FindFirstChild("SymptomStatus")
+                local status = statusObj and statusObj.Value
+                local block = getBlockForStatus(status)
+                if block then
+                    processed[closestModel] = true
+                    print("[AutoJudge] Sending", closestModel.Name, "to block:", block, "(distance:", closestDist, ")")
+                    SendToBlockRemote:FireServer(block)
+                end
+            end
+            task.wait(4)
         end
     end)
 end
