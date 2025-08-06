@@ -173,16 +173,7 @@ local function updateESP(model, status)
 	local root = model:FindFirstChild("HumanoidRootPart")
 	if not root then return end
 	
-	-- Distance culling - only show ESP within 200 studs
-	local playerChar = LocalPlayer.Character
-	if playerChar and playerChar:FindFirstChild("HumanoidRootPart") then
-		local distance = (root.Position - playerChar.HumanoidRootPart.Position).Magnitude
-		if distance > 40 then
-			local gui = model:FindFirstChild("StatusESP")
-			if gui then gui.Enabled = false end
-			return
-		end
-	end
+	-- Distance culling is handled by the consolidated distance check system
 
 	local gui = model:FindFirstChild("StatusESP")
 
