@@ -23,6 +23,18 @@ end
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SendToBlockRemote = ReplicatedStorage.Remotes and ReplicatedStorage.Remotes.SendToBlock
+local EndGameYes = ReplicatedStorage.Remotes and ReplicatedStorage.Remotes.EndGameYes
+
+-- Global flag to stop script on shutdown
+local isScriptRunning = true
+
+-- Shutdown logic when EndGameYes is fired
+if EndGameYes and EndGameYes.OnClientEvent then
+    EndGameYes.OnClientEvent:Connect(function()
+        warn("[Script] EndGameYes fired — shutting down.")
+        isScriptRunning = false
+    end)
+end
 
 -- Utility functions for detection mode
 local function getColor(value, low, mid, high)
@@ -52,11 +64,11 @@ local function getBreathingStatus(model)
 end
 
 local Civilians = Workspace:WaitForChild("Civilians")
-
--- Detection mode: handle model status (no ESP/UI)
 local trackedModels = {}
+local processed = {}
 
 local function handleModel(model)
+    if not isScriptRunning then return end
     if not model.IsA or not model:IsA("Model") then return end
     if trackedModels[model] then return end
     local humanoid = model.FindFirstChildWhichIsA and model:FindFirstChildWhichIsA("Humanoid")
@@ -64,13 +76,14 @@ local function handleModel(model)
     local root = model.FindFirstChild and model:FindFirstChild("HumanoidRootPart")
     if not (humanoid and status and root) then return end
     trackedModels[model] = true
-    -- Here you can add detection logic, e.g., print or log status
+
     print("[Detection] Model:", model.Name, "Status:", status.Value)
-    -- Listen for status changes
+
     local connStatus
     local connDied
     if status.GetPropertyChangedSignal then
         connStatus = status:GetPropertyChangedSignal("Value"):Connect(function()
+            if not isScriptRunning then return end
             print("[Detection] Model:", model.Name, "Status changed to:", status.Value)
         end)
     end
@@ -98,13 +111,12 @@ if Civilians and Civilians.GetChildren then
     end
     if Civilians.ChildAdded and Civilians.ChildAdded.Connect then
         Civilians.ChildAdded:Connect(function(child)
+            if not isScriptRunning then return end
             task.wait(0.1)
             handleModel(child)
         end)
     end
 end
-
-local processed = {}
 
 local function getBlockForStatus(status)
     if status == "Safe" then
@@ -126,10 +138,11 @@ end
 -- Main auto-judge loop
 if Civilians and Civilians.GetChildren and SendToBlockRemote and SendToBlockRemote.FireServer and judgeStationPart then
     task.spawn(function()
-        while true do
+        while isScriptRunning do
             local closestModel = nil
             local closestDist = math.huge
             for _, model in ipairs(Civilians:GetChildren()) do
+                if not isScriptRunning then return end
                 if not processed[model] and model.FindFirstChild and model:FindFirstChild("HumanoidRootPart") and model:FindFirstChild("SymptomStatus") then
                     local root = model:FindFirstChild("HumanoidRootPart")
                     local dist = (root.Position - judgeStationPart.Position).Magnitude
@@ -139,7 +152,7 @@ if Civilians and Civilians.GetChildren and SendToBlockRemote and SendToBlockRemo
                     end
                 end
             end
-            if closestModel then -- Always judge the closest
+            if closestModel and isScriptRunning then
                 local statusObj = closestModel:FindFirstChild("SymptomStatus")
                 local status = statusObj and statusObj.Value
                 local block = getBlockForStatus(status)
@@ -149,7 +162,7 @@ if Civilians and Civilians.GetChildren and SendToBlockRemote and SendToBlockRemo
                     SendToBlockRemote:FireServer(block)
                 end
             end
-            task.wait(3)
+            task.wait(3) -- Adjustable delay (originally 4s, now 3s for faster judging)
         end
     end)
 end
