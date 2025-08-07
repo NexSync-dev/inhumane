@@ -1,5 +1,18 @@
 repeat task.wait() until game:IsLoaded()
 
+local StarterGui = game:GetService("StarterGui")
+
+local function notify(title, text, duration)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = title,
+            Text = text,
+            Duration = duration or 5
+        })
+    end)
+end
+
+
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -152,4 +165,5 @@ Civilians.ChildAdded:Connect(function(child)
 	handleModel(child)
 end)
 
-print("Auto-sort script loaded! Monitoring civilians and automatically sending them to appropriate locations.") 
+notify("Script Loaded", "Start gooning whilst we work on this")
+
