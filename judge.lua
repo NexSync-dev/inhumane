@@ -1,4 +1,5 @@
 repeat task.wait() until game:IsLoaded()
+
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
@@ -163,5 +164,6 @@ Civilians.ChildAdded:Connect(function(child)
 	handleModel(child)
 end)
 
-notify("Script Loaded", "Start gooning whilst we work on this")
+notify("Script Loaded", "Start gooning whilst we wdork on this")
 
+end
