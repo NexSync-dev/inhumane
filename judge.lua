@@ -1,5 +1,45 @@
 repeat task.wait() until game:IsLoaded()
 
+repeat task.wait() until game:IsLoaded()
+
+local function waitForChildDeep(parent, childName, timeout)
+    local startTime = tick()
+    while tick() - startTime < timeout do
+        local child = parent:FindFirstChild(childName)
+        if child then return child end
+        task.wait(0.5)
+    end
+    return nil
+end
+
+print("Waiting for Civilians folder...")
+local Civilians = waitForChildDeep(workspace, "Civilians", 30)
+if not Civilians then
+    warn("❌ Civilians folder NOT found after 30 seconds!")
+    return
+end
+print("✅ Civilians folder found!")
+
+print("Waiting for Remotes folder...")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Remotes = waitForChildDeep(ReplicatedStorage, "Remotes", 30)
+if not Remotes then
+    warn("❌ Remotes folder NOT found after 30 seconds!")
+    return
+end
+print("✅ Remotes folder found!")
+
+print("Waiting for SendToBlock remote...")
+local SendToBlock = waitForChildDeep(Remotes, "SendToBlock", 30)
+if not SendToBlock then
+    warn("❌ SendToBlock remote NOT found after 30 seconds!")
+    return
+end
+print("✅ SendToBlock remote found!")
+
+-- Now you can safely run your logic using Civilians and SendToBlock
+
+
 local SkipEvent = game:GetService("ReplicatedStorage").Remotes.Skip
 SkipEvent:FireServer()
 
