@@ -1,4 +1,9 @@
-repeat task.wait() until game:IsLoaded()
+wait(10)
+
+
+local SkipEvent = game:GetService("ReplicatedStorage").Remotes.Skip
+SkipEvent:FireServer()
+
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
