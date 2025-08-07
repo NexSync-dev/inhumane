@@ -5,21 +5,22 @@ local LocalPlayer = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+
+-- 🛠️ ADD THESE: define Civilians and Remotes
 local Civilians = Workspace:WaitForChild("Civilians")
 local liquidationRemote = ReplicatedStorage:WaitForChild("SendToLiquidation")
 local survivorRemote = ReplicatedStorage:WaitForChild("SendToSurvivor")
 local quarantineRemote = ReplicatedStorage:WaitForChild("SendToQuarantine")
 
-local StarterGui = game:GetService("StarterGui")
-
 local function notify(title, text, duration)
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = title,
-            Text = text,
-            Duration = duration or 5
-        })
-    end)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = title,
+			Text = text,
+			Duration = duration or 5
+		})
+	end)
 end
 
 local function getColor(value, low, mid, high)
@@ -157,7 +158,6 @@ local function handleModel(model)
 	end)
 end
 
--- Process existing civilians
 for _, model in ipairs(Civilians:GetChildren()) do
 	handleModel(model)
 end
@@ -168,5 +168,4 @@ Civilians.ChildAdded:Connect(function(child)
 	handleModel(child)
 end)
 
-notify("Script Loaded", "Start gooning whilst we wdork on this")
-
+notify("Script Loaded", "Start working whilst we work on this")
