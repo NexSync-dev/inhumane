@@ -5,39 +5,39 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
 
--- Game state check
-local function isInGame()
+-- Function to get the gate object
+local function getTeleportGate()
 	local gates = Workspace:FindFirstChild("Gates")
-	if gates then
-		local children = gates:GetChildren()
-		if #children >= 14 then
-			local gate = children[14]:FindFirstChild("Gate")
-			if gate then
-				return true
-			end
-		end
+	if not gates then return nil end
+	
+	local children = gates:GetChildren()
+	if #children >= 14 then
+		return children[14]:FindFirstChild("Gate")
 	end
-	return false
+	return nil
 end
 
--- Skip if already in game
-if isInGame() then
-	print("Already in match — skipping auto-sorter.")
+-- If gate is present, teleport into it
+local gate = getTeleportGate()
+if gate then
+	print("Teleport gate detected! Walking into it...")
+	
+	local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+	local hrp = char:WaitForChild("HumanoidRootPart")
+	
+	-- Move the player into the gate
+	hrp.CFrame = gate.CFrame + Vector3.new(0, 3, 0)
+
+	-- Optional: stop script after TP
 	return
 end
 
--- Wait if still in game (e.g. if script is injected too early)
-while isInGame() do
-	print("In match — waiting to return to lobby...")
-	task.wait(2)
-end
+-- If not in match yet, run auto-sorter
+print("No gate detected. In lobby — running auto-sorter.")
 
-print("In lobby — starting auto-sorter.")
 
 -- Wait for remotes
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
