@@ -58,9 +58,15 @@ local function getBreathingStatus(model)
     return ""
 end
 
+local debounceStatus = {}
+
 local function determineAndSendStatus(model)
     local status = model:FindFirstChild("SymptomStatus")
     if not status then return end
+
+    -- If we are still waiting for cooldown for this model, skip
+    if debounceStatus[model] then return end
+    debounceStatus[model] = true  -- start cooldown
 
     local currentStatus = status.Value
     local name = model.Name
@@ -86,27 +92,22 @@ local function determineAndSendStatus(model)
         local isInfected = false
         local isSafe = false
 
-        -- Check BPM (dangerous if > 140 or < 90)
         if bpmVal > 140 or bpmVal < 90 then
             isInfected = true
         end
 
-        -- Check temperature (dangerous if > 104)
         if tempVal > 104 then
             isInfected = true
         end
 
-        -- Check breathing (dangerous if not "Safe")
         if breathingVal ~= "Safe" then
             isInfected = true
         end
 
-        -- Check contaminated items
         if hasContaminatedItems then
             isInfected = true
         end
 
-        -- If temperature is normal (<= 100) and no other dangerous signs, consider safe
         if tempVal <= 100 and breathingVal == "Safe" and not hasContaminatedItems and bpmVal >= 90 and bpmVal <= 140 then
             isSafe = true
         end
@@ -122,6 +123,11 @@ local function determineAndSendStatus(model)
             SendToBlock:FireServer("Quarantine")
         end
     end
+
+    -- Wait 3 seconds before allowing next judgment for this model
+    task.delay(3, function()
+        debounceStatus[model] = false
+    end)
 end
 
 local trackedModels = {}
