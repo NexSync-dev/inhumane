@@ -1,4 +1,9 @@
 repeat task.wait() until game:IsLoaded()
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local StarterGui = game:GetService("StarterGui")
 
@@ -11,13 +16,6 @@ local function notify(title, text, duration)
         })
     end)
 end
-
-
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 
 local function getColor(value, low, mid, high)
 	value = tonumber(value)
