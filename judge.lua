@@ -4,29 +4,6 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
--- Lobby check: If in lobby, teleport to "Forever" and skip script
-local Gates = Workspace:FindFirstChild("Gates")
-if Gates and Gates:FindFirstChild("Gate") and Gates.Gate:FindFirstChild("Gate") then
-	local forever = Workspace:FindFirstChild("Forever")
-	if forever and forever:IsA("Part") then
-		-- Make sure character is loaded
-		LocalPlayer.CharacterAdded:Wait()
-		local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-		char:WaitForChild("HumanoidRootPart").CFrame = forever.CFrame + Vector3.new(0, 5, 0)
-		warn("In lobby. Teleported to Forever. Skipping civilian auto-sort.")
-		return
-	end
-end
-
-
-local remotes = ReplicatedStorage:WaitForChild("Remotes")
-local survivorRemote = remotes:WaitForChild("Survivor")
-local quarantineRemote = remotes:WaitForChild("Quarentine") 
-local liquidationRemote = remotes:WaitForChild("Liquidation")
-
-local Civilians = Workspace:WaitForChild("Civilians")
-
--- Helper functions from original script
 local function getColor(value, low, mid, high)
 	value = tonumber(value)
 	if not value then return Color3.fromRGB(150,150,150) end
