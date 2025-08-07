@@ -5,6 +5,10 @@ local LocalPlayer = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Civilians = Workspace:WaitForChild("Civilians")
+local liquidationRemote = ReplicatedStorage:WaitForChild("SendToLiquidation")
+local survivorRemote = ReplicatedStorage:WaitForChild("SendToSurvivor")
+local quarantineRemote = ReplicatedStorage:WaitForChild("SendToQuarantine")
 
 local StarterGui = game:GetService("StarterGui")
 
@@ -166,4 +170,3 @@ end)
 
 notify("Script Loaded", "Start gooning whilst we wdork on this")
 
-end
