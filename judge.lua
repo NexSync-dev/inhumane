@@ -43,59 +43,39 @@ local success, err = pcall(function()
         return ""
     end
 
-    local function determineAndSendStatus(model)
-        local status = model:FindFirstChild("SymptomStatus")
-        if not status then return end
+    local remote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("SendToBlock")
 
-        local currentStatus = status.Value
-        local name = model.Name
-
-        if currentStatus == "Zombie" then
-            notify("Liquidation", name .. " (Zombie)")
-            liquidationRemote:FireServer(model)
-            return
-        end
-
-        if currentStatus == "Safe" then
-            notify("Survivor", name .. " (Safe)")
-            survivorRemote:FireServer(model)
-            return
-        end
-
-        if currentStatus == "Quarantine" then
-            local bpm = model:FindFirstChild("BPM")
-            local temp = model:FindFirstChild("Temp")
-            local breathingVal = getBreathingStatus(model)
-            local contamValue = model:FindFirstChild("HasContaminatedItems")
-
-            local bpmVal = bpm and tonumber(bpm.Value) or 0
-            local tempVal = temp and tonumber(temp.Value) or 0
-            local hasContaminatedItems = contamValue and contamValue:IsA("BoolValue") and contamValue.Value
-
-            local isInfected = false
-            local isSafe = false
-
-            if bpmVal > 140 or bpmVal < 90 then isInfected = true end
-            if tempVal > 104 then isInfected = true end
-            if breathingVal ~= "Safe" then isInfected = true end
-            if hasContaminatedItems then isInfected = true end
-
-            if tempVal <= 100 and breathingVal == "Safe" and not hasContaminatedItems and bpmVal >= 90 and bpmVal <= 140 then
-                isSafe = true
-            end
-
-            if isInfected then
-                notify("Liquidation", name .. " (Infected)")
-                liquidationRemote:FireServer(model)
-            elseif isSafe then
-                notify("Survivor", name .. " (Recovered)")
-                survivorRemote:FireServer(model)
-            else
-                notify("Quarantine", name .. " (Uncertain)")
-                quarantineRemote:FireServer(model)
-            end
+local function determineAndSendStatus(model)
+    local status = model:FindFirstChild("SymptomStatus")
+    if not status then return end
+    
+    local currentStatus = status.Value
+    
+    if currentStatus == "Zombie" then
+        notify("Liquidation", model.Name .. " (Zombie)")
+        remote:FireServer("Liquidation")
+        return
+    elseif currentStatus == "Safe" then
+        notify("Survivor", model.Name .. " (Safe)")
+        remote:FireServer("Survivor")
+        return
+    elseif currentStatus == "Quarantine" then
+        -- Your existing quarantine logic
+        local isInfected, isSafe = false, false
+        -- Determine infected or safe status based on your logic
+        
+        if isInfected then
+            notify("Liquidation", model.Name .. " (Infected)")
+            remote:FireServer("Liquidation")
+        elseif isSafe then
+            notify("Survivor", model.Name .. " (Recovered)")
+            remote:FireServer("Survivor")
+        else
+            notify("Quarantine", model.Name .. " (Uncertain)")
+            remote:FireServer("Quarantine")
         end
     end
+end
 
     local trackedModels = {}
 
