@@ -85,37 +85,43 @@ local success, err = pcall(function()
 
     local remote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("SendToBlock")
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SendToBlock = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SendToBlock")
+
 local function determineAndSendStatus(model)
     local status = model:FindFirstChild("SymptomStatus")
     if not status then return end
     
     local currentStatus = status.Value
-    
+    local name = model.Name
+
     if currentStatus == "Zombie" then
-        notify("Liquidation", model.Name .. " (Zombie)")
-        remote:FireServer("Liquidation")
-        return
+        notify("Liquidation", name .. " (Zombie)")
+        SendToBlock:FireServer("Liquidation")
     elseif currentStatus == "Safe" then
-        notify("Survivor", model.Name .. " (Safe)")
-        remote:FireServer("Survivor")
-        return
+        notify("Survivor", name .. " (Safe)")
+        SendToBlock:FireServer("Survivor")
     elseif currentStatus == "Quarantine" then
-        -- Your existing quarantine logic
-        local isInfected, isSafe = false, false
-        -- Determine infected or safe status based on your logic
-        
+        -- Your quarantine logic here
+
+        -- Example simplified:
+        local isInfected = false
+        local isSafe = false
+        -- Your logic to set these flags based on model values...
+
         if isInfected then
-            notify("Liquidation", model.Name .. " (Infected)")
-            remote:FireServer("Liquidation")
+            notify("Liquidation", name .. " (Infected)")
+            SendToBlock:FireServer("Liquidation")
         elseif isSafe then
-            notify("Survivor", model.Name .. " (Recovered)")
-            remote:FireServer("Survivor")
+            notify("Survivor", name .. " (Recovered)")
+            SendToBlock:FireServer("Survivor")
         else
-            notify("Quarantine", model.Name .. " (Uncertain)")
-            remote:FireServer("Quarantine")
+            notify("Quarantine", name .. " (Uncertain)")
+            SendToBlock:FireServer("Quarantine")
         end
     end
 end
+
 
     local trackedModels = {}
 
