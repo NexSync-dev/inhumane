@@ -1,176 +1,139 @@
-wait(10)
-
+repeat task.wait() until game:IsLoaded()
 
 local SkipEvent = game:GetService("ReplicatedStorage").Remotes.Skip
 SkipEvent:FireServer()
 
+local success, err = pcall(function()
 
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local StarterGui = game:GetService("StarterGui")
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local Workspace = game:GetService("Workspace")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local StarterGui = game:GetService("StarterGui")
 
--- 🛠️ ADD THESE: define Civilians and Remotes
-local Civilians = Workspace:WaitForChild("Civilians")
-local liquidationRemote = ReplicatedStorage:WaitForChild("SendToLiquidation")
-local survivorRemote = ReplicatedStorage:WaitForChild("SendToSurvivor")
-local quarantineRemote = ReplicatedStorage:WaitForChild("SendToQuarantine")
+    local function notify(title, text, duration)
+        pcall(function()
+            StarterGui:SetCore("SendNotification", {
+                Title = title,
+                Text = text,
+                Duration = duration or 5
+            })
+        end)
+    end
 
-local function notify(title, text, duration)
-	pcall(function()
-		StarterGui:SetCore("SendNotification", {
-			Title = title,
-			Text = text,
-			Duration = duration or 5
-		})
-	end)
-end
+    notify("Starting Script", "Waiting for remotes & civilians...")
 
-local function getColor(value, low, mid, high)
-	value = tonumber(value)
-	if not value then return Color3.fromRGB(150,150,150) end
-	if value < low then return Color3.fromRGB(0,255,0)
-	elseif value <= mid then return Color3.fromRGB(255,165,0)
-	else return Color3.fromRGB(255,0,0) end
-end
+    -- ✅ WAIT FOR REQUIRED OBJECTS
+    local Civilians = Workspace:WaitForChild("Civilians", 10)
+    local liquidationRemote = ReplicatedStorage:WaitForChild("SendToLiquidation", 10)
+    local survivorRemote = ReplicatedStorage:WaitForChild("SendToSurvivor", 10)
+    local quarantineRemote = ReplicatedStorage:WaitForChild("SendToQuarantine", 10)
 
-local function getTempColor(temp)
-	temp = tonumber(temp)
-	if not temp then return Color3.fromRGB(150,150,150) end
-	if temp > 104 then return Color3.fromRGB(255,0,0)
-	elseif temp >= 100 then return Color3.fromRGB(255,165,0)
-	else return Color3.fromRGB(0,255,0) end
-end
+    assert(Civilians, "❌ Civilians folder not found")
+    assert(liquidationRemote, "❌ SendToLiquidation remote not found")
+    assert(survivorRemote, "❌ SendToSurvivor remote not found")
+    assert(quarantineRemote, "❌ SendToQuarantine remote not found")
 
-local function getBreathingStatus(model)
-	local breath = model:FindFirstChild("BreathingNoise")
-	if breath then
-		local val = breath.Value
-		if val == "Safe" then return "Safe", Color3.fromRGB(0,255,0)
-		elseif val == "Critical" or val == "Zombie Breathing" then return "Bad", Color3.fromRGB(255,0,0) end
-	end
-	return "", Color3.fromRGB(150,150,150)
-end
+    local function getBreathingStatus(model)
+        local breath = model:FindFirstChild("BreathingNoise")
+        if breath then
+            local val = breath.Value
+            if val == "Safe" then return "Safe" else return "Bad" end
+        end
+        return ""
+    end
 
--- Function to determine final status and send to appropriate location
-local function determineAndSendStatus(model)
-	local status = model:FindFirstChild("SymptomStatus")
-	if not status then return end
-	
-	local currentStatus = status.Value
-	
-	-- If already determined as Zombie, send to liquidation
-	if currentStatus == "Zombie" then
-		print("Sending " .. model.Name .. " to Liquidation (Infected)")
-		liquidationRemote:FireServer(model)
-		return
-	end
-	
-	-- If already determined as Safe, send to survivor
-	if currentStatus == "Safe" then
-		print("Sending " .. model.Name .. " to Survivor (Safe)")
-		survivorRemote:FireServer(model)
-		return
-	end
-	
-	-- For Quarantine status, check detailed metrics to make final decision
-	if currentStatus == "Quarantine" then
-		local bpm = model:FindFirstChild("BPM")
-		local temp = model:FindFirstChild("Temp")
-		local breathingVal, _ = getBreathingStatus(model)
-		local contamValue = model:FindFirstChild("HasContaminatedItems")
-		
-		local bpmVal = bpm and tonumber(bpm.Value) or 0
-		local tempVal = temp and tonumber(temp.Value) or 0
-		local hasContaminatedItems = contamValue and contamValue:IsA("BoolValue") and contamValue.Value
-		
-		-- Decision logic based on health metrics
-		local isInfected = false
-		local isSafe = false
-		
-		-- Check BPM (dangerous if > 140 or < 90)
-		if bpmVal > 140 or bpmVal < 90 then
-			isInfected = true
-		end
-		
-		-- Check temperature (dangerous if > 104)
-		if tempVal > 104 then
-			isInfected = true
-		end
-		
-		-- Check breathing (dangerous if not "Safe")
-		if breathingVal ~= "Safe" then
-			isInfected = true
-		end
-		
-		-- Check contaminated items
-		if hasContaminatedItems then
-			isInfected = true
-		end
-		
-		-- If temperature is normal (<= 100) and no other dangerous signs, consider safe
-		if tempVal <= 100 and breathingVal == "Safe" and not hasContaminatedItems and bpmVal >= 90 and bpmVal <= 140 then
-			isSafe = true
-		end
-		
-		-- Make final decision
-		if isInfected then
-			print("Sending " .. model.Name .. " to Liquidation (Quarantine -> Infected)")
-			liquidationRemote:FireServer(model)
-		elseif isSafe then
-			print("Sending " .. model.Name .. " to Survivor (Quarantine -> Safe)")
-			survivorRemote:FireServer(model)
-		else
-			-- Keep in quarantine if uncertain
-			print("Keeping " .. model.Name .. " in Quarantine (uncertain status)")
-			quarantineRemote:FireServer(model)
-		end
-	end
-end
+    local function determineAndSendStatus(model)
+        local status = model:FindFirstChild("SymptomStatus")
+        if not status then return end
 
--- Track models and monitor their status changes
-local trackedModels = {}
+        local currentStatus = status.Value
+        local name = model.Name
 
-local function handleModel(model)
-	if not model:IsA("Model") then return end
-	if trackedModels[model] then return end
-	
-	local humanoid = model:FindFirstChildWhichIsA("Humanoid")
-	local status = model:FindFirstChild("SymptomStatus")
-	local root = model:FindFirstChild("HumanoidRootPart")
-	
-	if not (humanoid and status and root) then return end
-	
-	trackedModels[model] = true
-	
-	-- Initial status check
-	determineAndSendStatus(model)
-	
-	-- Monitor status changes
-	local connStatus
-	connStatus = status:GetPropertyChangedSignal("Value"):Connect(function()
-		determineAndSendStatus(model)
-	end)
-	
-	-- Clean up when character dies
-	local connDied
-	connDied = humanoid.Died:Connect(function()
-		connStatus:Disconnect()
-		connDied:Disconnect()
-		trackedModels[model] = nil
-	end)
-end
+        if currentStatus == "Zombie" then
+            notify("Liquidation", name .. " (Zombie)")
+            liquidationRemote:FireServer(model)
+            return
+        end
 
-for _, model in ipairs(Civilians:GetChildren()) do
-	handleModel(model)
-end
+        if currentStatus == "Safe" then
+            notify("Survivor", name .. " (Safe)")
+            survivorRemote:FireServer(model)
+            return
+        end
 
--- Monitor for new civilians
-Civilians.ChildAdded:Connect(function(child)
-	task.wait(0.1)
-	handleModel(child)
+        if currentStatus == "Quarantine" then
+            local bpm = model:FindFirstChild("BPM")
+            local temp = model:FindFirstChild("Temp")
+            local breathingVal = getBreathingStatus(model)
+            local contamValue = model:FindFirstChild("HasContaminatedItems")
+
+            local bpmVal = bpm and tonumber(bpm.Value) or 0
+            local tempVal = temp and tonumber(temp.Value) or 0
+            local hasContaminatedItems = contamValue and contamValue:IsA("BoolValue") and contamValue.Value
+
+            local isInfected = false
+            local isSafe = false
+
+            if bpmVal > 140 or bpmVal < 90 then isInfected = true end
+            if tempVal > 104 then isInfected = true end
+            if breathingVal ~= "Safe" then isInfected = true end
+            if hasContaminatedItems then isInfected = true end
+
+            if tempVal <= 100 and breathingVal == "Safe" and not hasContaminatedItems and bpmVal >= 90 and bpmVal <= 140 then
+                isSafe = true
+            end
+
+            if isInfected then
+                notify("Liquidation", name .. " (Infected)")
+                liquidationRemote:FireServer(model)
+            elseif isSafe then
+                notify("Survivor", name .. " (Recovered)")
+                survivorRemote:FireServer(model)
+            else
+                notify("Quarantine", name .. " (Uncertain)")
+                quarantineRemote:FireServer(model)
+            end
+        end
+    end
+
+    local trackedModels = {}
+
+    local function handleModel(model)
+        if not model:IsA("Model") or trackedModels[model] then return end
+
+        local humanoid = model:FindFirstChildWhichIsA("Humanoid")
+        local status = model:FindFirstChild("SymptomStatus")
+        local root = model:FindFirstChild("HumanoidRootPart")
+        if not (humanoid and status and root) then return end
+
+        trackedModels[model] = true
+        determineAndSendStatus(model)
+
+        status:GetPropertyChangedSignal("Value"):Connect(function()
+            determineAndSendStatus(model)
+        end)
+
+        humanoid.Died:Connect(function()
+            trackedModels[model] = nil
+        end)
+    end
+
+    -- Hook existing civilians
+    for _, model in ipairs(Civilians:GetChildren()) do
+        handleModel(model)
+    end
+
+    Civilians.ChildAdded:Connect(function(child)
+        task.wait(0.1)
+        handleModel(child)
+    end)
+
+    notify("✅ Script Loaded", "Auto-sort now running.")
+
 end)
 
-notify("Script Loaded", "Start working whilst we work on this")
+-- Print errors if script fails entirely
+if not success then
+    warn("❌ Script failed to run:", err)
+end
