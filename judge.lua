@@ -4,42 +4,21 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
-
--- Function to get the gate object
-local function getTeleportGate()
-	local gates = Workspace:FindFirstChild("Gates")
-	if not gates then return nil end
-	
-	local children = gates:GetChildren()
-	if #children >= 14 then
-		return children[14]:FindFirstChild("Gate")
+-- Lobby check: If in lobby, teleport to "Forever" and skip script
+local Gates = Workspace:FindFirstChild("Gates")
+if Gates and Gates:FindFirstChild("Gate") and Gates.Gate:FindFirstChild("Gate") then
+	local forever = Workspace:FindFirstChild("Forever")
+	if forever and forever:IsA("Part") then
+		-- Make sure character is loaded
+		LocalPlayer.CharacterAdded:Wait()
+		local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+		char:WaitForChild("HumanoidRootPart").CFrame = forever.CFrame + Vector3.new(0, 5, 0)
+		warn("In lobby. Teleported to Forever. Skipping civilian auto-sort.")
+		return
 	end
-	return nil
 end
 
--- If gate is present, teleport into it
-local gate = getTeleportGate()
-if gate then
-	print("Teleport gate detected! Walking into it...")
-	
-	local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-	local hrp = char:WaitForChild("HumanoidRootPart")
-	
-	-- Move the player into the gate
-	hrp.CFrame = gate.CFrame + Vector3.new(0, 3, 0)
 
-	-- Optional: stop script after TP
-	return
-end
-
--- If not in match yet, run auto-sorter
-print("No gate detected. In lobby — running auto-sorter.")
-
-
--- Wait for remotes
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local survivorRemote = remotes:WaitForChild("Survivor")
 local quarantineRemote = remotes:WaitForChild("Quarentine") 
