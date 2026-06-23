@@ -1,522 +1,348 @@
-local Players = game:GetService("Players")
-
-local LocalPlayer = Players.LocalPlayer
-
-local Workspace = game:GetService("Workspace")
-
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local repo = "https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/"
+local Library     = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager  = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local Window = Library:CreateWindow({
+    Title   = "Symptom Checker",
+    Center  = true,
+    AutoShow = true,
+})
+
+local Tabs = {
+    Main       = Window:AddTab("Main"),
+    Quarantine = Window:AddTab("Quarantine"),
+    Debug      = Window:AddTab("Debug"),
+    Settings   = Window:AddTab("Settings"),
+}
+
+local StatusBox  = Tabs.Main:AddLeftGroupbox("Scanner")
+local ResultBox  = Tabs.Main:AddRightGroupbox("Result")
+local ControlBox = Tabs.Main:AddLeftGroupbox("Controls")
+
+local LblStatus  = StatusBox:AddLabel("Status:  Idle")
+local LblTarget  = StatusBox:AddLabel("Target:  —")
+local LblTimer   = StatusBox:AddLabel("Next in:  —")
+
+local LblVerdict  = ResultBox:AddLabel("Verdict:  —")
+local LblSymCount = ResultBox:AddLabel("Symptoms: —")
+local LblSymList  = ResultBox:AddLabel("", true)
+
+local QuarantineControlBox = Tabs.Quarantine:AddLeftGroupbox("Controls")
+local QuarantineStatusBox  = Tabs.Quarantine:AddRightGroupbox("Status")
+
+local LblQStatus  = QuarantineStatusBox:AddLabel("please select a person")
+local LblQTarget  = QuarantineStatusBox:AddLabel("Target:  —")
+local LblQVerdict = QuarantineStatusBox:AddLabel("Verdict:  —")
+
+local DebugBox   = Tabs.Debug:AddLeftGroupbox("Log (last 12_events)")
+local LblLog     = DebugBox:AddLabel("No events yet.", true)
+
+local AutoJudgeToggle = ControlBox:AddToggle("AutoJudge", {
+    Text    = "Enable Auto-Judge",
+    Default = false,
+})
+
+local DirectStatusToggle = ControlBox:AddToggle("DirectStatusMode", {
+    Text    = "Use Direct SymptomStatus",
+    Default = true,
+})
+
+local NoclipToggle = ControlBox:AddToggle("Noclip", {
+    Text    = "Noclip",
+    Default = false,
+})
+
+local QuarantineToggle = QuarantineControlBox:AddToggle("QuarantineAutoJudge", {
+    Text    = "Enable Quarantine Auto-Judge",
+    Default = false,
+})
+
+local LogHistory = {}
+
+function _log(msg)
+    local entry = ("[%s] %s"):format(os.date("%H:%M:%S"), msg)
+    table.insert(LogHistory, 1, entry)
+    if #LogHistory > 12 then
+        table.remove(LogHistory, #LogHistory)
+    end
+    LblLog:SetText(table.concat(LogHistory, "\n"))
+end
+
+local SymptomDB = {
+    { name = "Rash",                 category = "Appearance",        status = "Safe"      },
+    { name = "Minor Bruising",       category = "Appearance",        status = "Safe"      },
+    { name = "Profuse Sweating",     category = "Appearance",        status = "Possible"  },
+    { name = "Pale Gray Skin",       category = "Appearance",        status = "Possible"  },
+    { name = "Mouth Blood",          category = "Appearance",        status = "Possible"  },
+    { name = "Skin Cracks",          category = "Appearance",        status = "Dangerous" },
+    { name = "Bloated Face",         category = "Appearance",        status = "Dangerous" },
+    { name = "Glowing Eyes",         category = "Appearance",        status = "Dangerous" },
+    { name = "Bleeding Eyes",        category = "Appearance",        status = "Dangerous" },
+    { name = "Green Skin",           category = "Appearance",        status = "Dangerous" },
+    { name = "Foaming at Mouth",     category = "Appearance",        status = "Dangerous" },
+    { name = "Faceless",             category = "Appearance",        status = "Dangerous" },
+    { name = "Extreme Blood",        category = "Appearance",        status = "Dangerous" },
+    { name = "Zombie Blood",         category = "Appearance",        status = "Dangerous" },
+    { name = "Heavy Bitemarks",      category = "Appearance",        status = "Dangerous" },
+    { name = "Zombie Spores",        category = "Appearance",        status = "Dangerous" },
+    { name = "Paranoia",             category = "Mental/Behaviour",  status = "Possible"  },
+    { name = "Sneezing",             category = "Sounds",            status = "Safe"      },
+    { name = "Coughing",             category = "Sounds",            status = "Safe"      },
+    { name = "Sniffling",            category = "Sounds",            status = "Safe"      },
+    { name = "Growling",             category = "Sounds",            status = "Dangerous" },
+    { name = "Zombie Breathing",     category = "Sounds",            status = "Dangerous" },
+    { name = "Normal Pulse",         category = "Vitals",            status = "Safe"      },
+    { name = "Normal Temperature",   category = "Vitals",            status = "Safe"      },
+    { name = "Limp",                 category = "Vitals/Movement",   status = "Safe"      },
+    { name = "Shivering",            category = "Vitals",            status = "Possible"  },
+    { name = "Elevated Pulse",       category = "Vitals",            status = "Possible"  },
+    { name = "Elevated Temperature", category = "Vitals",            status = "Possible"  },
+    { name = "Spasms",               category = "Vitals",            status = "Dangerous" },
+    { name = "Extreme Pulse",        category = "Vitals",            status = "Dangerous" },
+    { name = "Extreme Temperature",  category = "Vitals",            status = "Dangerous" },
+    { name = "Zombie Movements",     category = "Movement",          status = "Dangerous" },
+}
+
+local SymptomLookup = {}
+for _, s in ipairs(SymptomDB) do
+    SymptomLookup[s.name] = s.status
+end
+
+local function getCurrentCivilian()
+    local repStorage = game:GetService("ReplicatedStorage")
+    local gameData = repStorage:FindFirstChild("Game_Data")
+    if not gameData then return nil end
+
+    local civVal = gameData:FindFirstChild("CurrentCivilian")
+    if not civVal then return nil end
+
+    local civ = nil
+    if civVal:IsA("ObjectValue") then
+        civ = civVal.Value
+    elseif civVal:IsA("StringValue") then
+        local civsFolder = workspace:FindFirstChild("Civilians")
+        if civsFolder then
+            civ = civsFolder:FindFirstChild(civVal.Value)
+        end
+    end
+
+    if civ and civ.Parent == workspace:FindFirstChild("Civilians") then
+        return civ
+    end
+
+    return nil
+end
+
+local function getCurrentQuarantine()
+    local repStorage = game:GetService("ReplicatedStorage")
+    local gameData = repStorage:FindFirstChild("Game_Data")
+    if not gameData then return nil end
+
+    local qVal = gameData:FindFirstChild("CurrentQuarantine")
+    if not qVal then return nil end
+
+    local civ = nil
+    if qVal:IsA("ObjectValue") then
+        civ = qVal.Value
+    elseif qVal:IsA("StringValue") then
+        local civsFolder = workspace:FindFirstChild("Civilians")
+        if civsFolder then
+            civ = civsFolder:FindFirstChild(qVal.Value)
+        end
+    end
+
+    if civ and civ.Parent == workspace:FindFirstChild("Civilians") then
+        return civ
+    end
+
+    return nil
+end
+
+local function hasContaminatedItems(civName)
+    local civItemsFolder = workspace:FindFirstChild("CivItems")
+    local contamFolder = game:GetService("ReplicatedStorage"):FindFirstChild("ContaminatedItems")
+
+    if not civItemsFolder or not contamFolder then return false end
+
+    local personFolder = civItemsFolder:FindFirstChild(civName)
+    if not personFolder then return false end
+
+    local badNames = {}
+    for _, item in ipairs(contamFolder:GetChildren()) do
+        badNames[item.Name] = true
+    end
+
+    for _, obj in ipairs(personFolder:GetDescendants()) do
+        if badNames[obj.Name] then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function judgeSymptoms(civ)
+    if DirectStatusToggle.Value then
+        local statusVal = civ:FindFirstChild("SymptomStatus")
+        if statusVal then
+            local valStr = tostring(statusVal.Value):lower()
+            if valStr:find("zombie") then
+                return "Liquidation", 0, { "✓ Direct Status: Zombie" }
+            elseif valStr:find("safe") then
+                return "Survivor", 0, { "✓ Direct Status: Safe" }
+            end
+        end
+    end
+
+    if hasContaminatedItems(civ.Name) then
+        return "Liquidation", 0, { "✗ Contaminated Item Detected" }
+    end
+
+    local sympFolder = civ:FindFirstChild("Symptoms")
+    if not sympFolder then
+        return "Survivor", 0, { "⚠ No Symptoms folder found" }
+    end
+
+    local tier = 0
+    local details = {}
+    local unknown = {}
+
+    for _, child in ipairs(sympFolder:GetChildren()) do
+        local status = SymptomLookup[child.Name]
+        if status then
+            if status == "Dangerous" and tier < 2 then tier = 2
+            elseif status == "Possible" and tier < 1 then tier = 1
+            end
+            local icon = status == "Safe" and "✓" or status == "Possible" and "⚡" or "✗"
+            table.insert(details, icon .. " " .. child.Name)
+        else
+            table.insert(unknown, child.Name)
+        end
+    end
+
+    if #unknown > 0 then
+        _log("Unknown symptoms: " .. table.concat(unknown, ", "))
+    end
+
+    local verdict = (tier == 2) and "Liquidation"
+                 or (tier == 1) and "Quarantine"
+                 or "Survivor"
+
+    return verdict, #sympFolder:GetChildren(), details
+end
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:SetFolder("SymptomChecker")
+SaveManager:BuildConfigSection(Tabs.Settings)
+ThemeManager:ApplyToTab(Tabs.Settings)
+
+RunService.Stepped:Connect(function()
+    if NoclipToggle.Value and LocalPlayer.Character then
+        for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
+_log("Script loaded. Tracking targets exclusively via Game_Data.CurrentCivilian...")
 
 task.spawn(function()
+    while true do
+        if not AutoJudgeToggle.Value then
+            LblStatus:SetText("Status:  Paused")
+            task.wait(0.5)
+            continue
+        end
 
-	while true do		pcall(function()
+        LblStatus:SetText("Status:  Finding target...")
+        local civ = getCurrentCivilian()
+        if not civ then
+            LblTarget:SetText("Target:  None found")
+            LblStatus:SetText("Status:  No current civilian!")
+            task.wait(1)
+            continue
+        end
 
-			local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        LblTarget:SetText("Target:  " .. civ.Name)
 
-			local humanoid = char:FindFirstChildWhichIsA("Humanoid")
+        LblStatus:SetText("Status:  Judging...")
+        local verdict, symCount, details = judgeSymptoms(civ)
 
-			if humanoid then
+        LblSymCount:SetText("Symptoms: " .. symCount)
+        LblSymList:SetText(table.concat(details, "\n"))
+        LblVerdict:SetText("Verdict:  " .. verdict)
+        _log(civ.Name .. " → " .. verdict)
 
-				humanoid.WalkSpeed = 28
+        local SendEvent = game:GetService("ReplicatedStorage").Remotes.SendToBlock
+        SendEvent:FireServer(verdict)
 
-			end
-
-		end)
-
-		task.wait(0.1)
-
-	end
-
+        LblStatus:SetText("Status:  ✓ Fired → " .. verdict)
+        
+        for i = 30, 1, -1 do
+            LblTimer:SetText(("Next in:  %.1fs"):format(i * 0.1))
+            task.wait(0.1)
+        end
+        task.wait(0.02)
+    end
 end)
 
-local ProxPromptCache = {}
-
-local function setupPrompt(prompt)
-
-	if not prompt:IsA("ProximityPrompt") or ProxPromptCache[prompt] then return end
-
-	ProxPromptCache[prompt] = true
-
-	prompt.HoldDuration = 0
-
-	local function autoFire()
-
-		pcall(function()
-
-			local part = prompt.Parent
-
-			if not (part and part:IsA("BasePart") and prompt.Enabled) then return end
-
-			local name = part.Name:lower()
-
-			local action = prompt.ActionText
-
-			if name == "head" or name == "torso" or name == "pour" then
-
-				prompt:InputHoldBegin()
-
-				prompt:InputHoldEnd()
-
-			elseif action == "Examine" then
-
-				prompt:InputHoldBegin()
-
-				prompt:InputHoldEnd()
-
-				task.wait(0.3)
-
-			end
-
-		end)
-
-	end
-
-	-- Reduced frequency check for proximity prompts (every 0.1 seconds instead of every frame)
-	task.spawn(function()
-		while prompt.Parent do
-			if prompt.Parent and prompt.Enabled then
-				autoFire()
-			end
-			task.wait(0.1)
-		end
-	end)
-
-	prompt.AncestryChanged:Connect(function(_, parent)
-
-		if not parent then
-
-			ProxPromptCache[prompt] = nil
-
-		end
-
-	end)
-
-end
-
--- More efficient proximity prompt detection using DescendantAdded
-Workspace.DescendantAdded:Connect(function(descendant)
-	if descendant:IsA("ProximityPrompt") and not ProxPromptCache[descendant] then
-		setupPrompt(descendant)
-	end
-end)
-
--- Initial scan for existing prompts
 task.spawn(function()
-	for _, prompt in ipairs(Workspace:GetDescendants()) do
-		if prompt:IsA("ProximityPrompt") and not ProxPromptCache[prompt] then
-			setupPrompt(prompt)
-		end
-	end
-end)
-
-local generatorFillRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("GeneratorFill")
-
-RunService.Heartbeat:Connect(function()
-	pcall(function()
-		generatorFillRemote:FireServer(true)
-	end)
-end)
-
-local Civilians = Workspace:WaitForChild("Civilians")
-
-local function getColor(value, low, mid, high)
-
-	value = tonumber(value)
-
-	if not value then return Color3.fromRGB(150,150,150) end
-
-	if value < low then return Color3.fromRGB(0,255,0)
-
-	elseif value <= mid then return Color3.fromRGB(255,165,0)
-
-	else return Color3.fromRGB(255,0,0) end
-
-end
-
-local function getTempColor(temp)
-
-	temp = tonumber(temp)
-
-	if not temp then return Color3.fromRGB(150,150,150) end
-
-	if temp > 104 then return Color3.fromRGB(255,0,0)
-
-	elseif temp >= 100 then return Color3.fromRGB(255,165,0)
-
-	else return Color3.fromRGB(0,255,0) end
-
-end
-
-local function getBreathingStatus(model)
-
-	local breath = model:FindFirstChild("BreathingNoise")
-
-	if breath then
-
-		local val = breath.Value
-
-		if val == "Safe" then return "Safe", Color3.fromRGB(0,255,0)
-
-		elseif val == "Critical" or val == "Zombie Breathing" then return "Bad", Color3.fromRGB(255,0,0) end
-
-	end
-
-	return "", Color3.fromRGB(150,150,150)
-
-end
-
--- Cache for ESP elements to avoid repeated lookups
-local espCache = {}
-
-local function updateESP(model, status)
-	local root = model:FindFirstChild("HumanoidRootPart")
-	if not root then return end
-	
-	-- Distance culling is handled by the consolidated distance check system
-
-	local gui = model:FindFirstChild("StatusESP")
-
-	if not gui then
-		gui = Instance.new("BillboardGui")
-		gui.Name = "StatusESP"
-		gui.Adornee = root
-		gui.AlwaysOnTop = true
-		gui.Size = UDim2.new(0, 60, 0, 48)
-		gui.StudsOffset = Vector3.new(0, 3, 0)
-		gui.Parent = model
-
-		local nameText = Instance.new("TextLabel")
-		nameText.Name = "Name"
-		nameText.Size = UDim2.new(1, 0, 0, 12)
-		nameText.Position = UDim2.new(0, 0, 0, 3.1)
-		nameText.BackgroundTransparency = 1
-		nameText.Font = Enum.Font.SourceSans
-		nameText.TextSize = 12
-		nameText.Text = model.Name
-		nameText.TextColor3 = Color3.fromRGB(180,180,180)
-		nameText.TextYAlignment = Enum.TextYAlignment.Center
-		nameText.TextStrokeTransparency = 1
-		nameText.Parent = gui
-
-		local label = Instance.new("TextLabel")
-		label.Name = "Label"
-		label.Size = UDim2.new(1, 0, 0, 16)
-		label.Position = UDim2.new(0, 0, 0, 14)
-		label.BackgroundTransparency = 1
-		label.Font = Enum.Font.Gotham
-		label.TextSize = 13
-		label.TextStrokeTransparency = 0.5
-		label.TextYAlignment = Enum.TextYAlignment.Center
-		label.Parent = gui
-
-		local info = Instance.new("TextLabel")
-		info.Name = "Info"
-		info.Size = UDim2.new(1, 0, 0, 20)
-		info.Position = UDim2.new(0, 0, 0, 30)
-		info.BackgroundTransparency = 1
-		info.Font = Enum.Font.SourceSans
-		info.TextScaled = true
-		info.TextStrokeTransparency = 1
-		info.RichText = true
-		info.TextColor3 = Color3.fromRGB(150,150,150)
-		info.TextYAlignment = Enum.TextYAlignment.Center
-		info.Parent = gui
-		
-		-- Cache the elements
-		espCache[model] = {gui = gui, label = label, info = info}
-	else
-		gui.Enabled = true
-	end
-
-	local cached = espCache[model]
-	if not cached then
-		cached = {
-			gui = gui,
-			label = gui:FindFirstChild("Label"),
-			info = gui:FindFirstChild("Info")
-		}
-		espCache[model] = cached
-	end
-	
-	local label, info = cached.label, cached.info
-	if not label or not info then return end
-
-	if status == "Zombie" then
-
-		label.Text = "Infected"
-
-		label.TextColor3 = Color3.fromRGB(255, 0, 0)
-
-		info.Text = ""
-
-	elseif status == "Safe" then
-
-		label.Text = "Safe"
-
-		label.TextColor3 = Color3.fromRGB(0, 255, 0)
-
-		info.Text = ""
-
-	elseif status == "Quarantine" then
-
-		label.Text = "Quarantine"
-
-		label.TextColor3 = Color3.fromRGB(255, 255, 0)
-
-		local bpm = model:FindFirstChild("BPM")
-
-		local temp = model:FindFirstChild("Temp")
-
-		local breathingVal, breathingColor = getBreathingStatus(model)
-
-		local bpmVal = bpm and bpm.Value or "0"
-
-		local tempVal = temp and temp.Value or "0"
-
-		local bpmColor = getColor(bpmVal, 90, 140, 999)
-
-		local tempColor = getTempColor(tempVal)
-
-		local contaminationText = "No contaminated items"
-
-		local contaminationColor = Color3.fromRGB(0, 255, 0)
-
-		local contamValue = model:FindFirstChild("HasContaminatedItems")
-
-		if contamValue and contamValue:IsA("BoolValue") and contamValue.Value then
-
-			contaminationText = "Has contaminated items"
-
-			contaminationColor = Color3.fromRGB(255, 0, 0)
-
-		end
-
-		-- Optimized string formatting - pre-calculate color values
-		local bpmR, bpmG, bpmB = math.floor(bpmColor.R*255), math.floor(bpmColor.G*255), math.floor(bpmColor.B*255)
-		local tempR, tempG, tempB = math.floor(tempColor.R*255), math.floor(tempColor.G*255), math.floor(tempColor.B*255)
-		local breathR, breathG, breathB = math.floor(breathingColor.R*255), math.floor(breathingColor.G*255), math.floor(breathingColor.B*255)
-		local contamR, contamG, contamB = math.floor(contaminationColor.R*255), math.floor(contaminationColor.G*255), math.floor(contaminationColor.B*255)
-		
-		info.Text = string.format(
-			'<p align="center"><font color="#FFFFFF">BPM: </font><font color="#%02X%02X%02X">%s</font>  <font color="#FFFFFF">Temp: </font><font color="#%02X%02X%02X">%s</font><br/><font color="#FFFFFF">Breathing: </font><font color="#%02X%02X%02X">%s</font><br/><font color="#%02X%02X%02X">%s</font></p>',
-			bpmR, bpmG, bpmB, tostring(bpmVal),
-			tempR, tempG, tempB, tostring(tempVal),
-			breathR, breathG, breathB, breathingVal,
-			contamR, contamG, contamB, contaminationText
-		)
-
-	else
-		if gui then 
-			gui:Destroy() 
-			espCache[model] = nil
-		end
-	end
-
-end
-
-local trackedModels = {}
-
--- Consolidated distance check for all ESP elements
-task.spawn(function()
-	while true do
-		local playerChar = LocalPlayer.Character
-		if playerChar and playerChar:FindFirstChild("HumanoidRootPart") then
-			local playerPos = playerChar.HumanoidRootPart.Position
-			
-			for model, _ in pairs(trackedModels) do
-				if model.Parent then
-					local root = model:FindFirstChild("HumanoidRootPart")
-					local gui = model:FindFirstChild("StatusESP")
-					if root and gui then
-						local distance = (root.Position - playerPos).Magnitude
-						gui.Enabled = distance <= 200
-					end
-				end
-			end
-		end
-		task.wait(0.5) -- Check distance every 0.5 seconds
-	end
-end)
-
-local function handleModel(model)
-
-	if not model:IsA("Model") then return end
-
-	if trackedModels[model] then return end
-
-	local humanoid = model:FindFirstChildWhichIsA("Humanoid")
-
-	local status = model:FindFirstChild("SymptomStatus")
-
-	local root = model:FindFirstChild("HumanoidRootPart")
-
-	if not (humanoid and status and root) then return end
-
-	trackedModels[model] = true
-
-	updateESP(model, status.Value)
-
-	local connStatus
-
-	connStatus = status:GetPropertyChangedSignal("Value"):Connect(function()
-
-		updateESP(model, status.Value)
-
-	end)
-
-	local connDied
-	connDied = humanoid.Died:Connect(function()
-		local esp = model:FindFirstChild("StatusESP")
-		if esp then esp:Destroy() end
-		connStatus:Disconnect()
-		connDied:Disconnect()
-		trackedModels[model] = nil
-		espCache[model] = nil -- Clean up cache
-	end)
-	
-	-- Clean up when model is removed
-	model.AncestryChanged:Connect(function(_, parent)
-		if not parent then
-			local esp = model:FindFirstChild("StatusESP")
-			if esp then esp:Destroy() end
-			if connStatus then connStatus:Disconnect() end
-			if connDied then connDied:Disconnect() end
-			trackedModels[model] = nil
-			espCache[model] = nil
-		end
-	end)
-
-end
-
-for _, model in ipairs(Civilians:GetChildren()) do
-
-	handleModel(model)
-
-end
-
-local ZombiesFolder = Workspace:WaitForChild("Zombies")
-
-local function createHealthBar(humanoid, head)
-
-	local billboard = Instance.new("BillboardGui")
-
-	billboard.Name = "HealthBar"
-
-	billboard.Adornee = head
-
-	billboard.Size = UDim2.new(4, 0, 0.5, 0)
-
-	billboard.StudsOffset = Vector3.new(0, 1.5, 0)
-
-	billboard.AlwaysOnTop = true
-
-	billboard.Parent = head
-
-	local background = Instance.new("Frame")
-
-	background.Size = UDim2.new(1, 0, 1, 0)
-
-	background.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-
-	background.BorderSizePixel = 0
-
-	background.Parent = billboard
-
-	local healthBar = Instance.new("Frame")
-
-	healthBar.Size = UDim2.new(1, 0, 1, 0)
-
-	healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-
-	healthBar.BorderSizePixel = 0
-
-	healthBar.Parent = background
-
-	local function updateHealth()
-
-		local healthPercent = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
-
-		healthBar:TweenSize(UDim2.new(healthPercent, 0, 1, 0), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true)
-
-		if healthPercent > 0.5 then
-
-			healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-
-		elseif healthPercent > 0.2 then
-
-			healthBar.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
-
-		else
-
-			healthBar.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-
-		end
-
-	end
-
-	local healthConn = humanoid:GetPropertyChangedSignal("Health"):Connect(updateHealth)
-
-	updateHealth()
-
-	humanoid.Died:Connect(function()
-
-		healthConn:Disconnect()
-
-		if billboard then billboard:Destroy() end
-
-	end)
-
-	local removalConn
-
-	removalConn = humanoid.Parent.AncestryChanged:Connect(function(_, parent)
-
-		if not parent then
-
-			healthConn:Disconnect()
-
-			removalConn:Disconnect()
-
-			if billboard then billboard:Destroy() end
-
-		end
-
-	end)
-
-end
-
-local trackedZombies = {}
-
-local function handleZombie(zombie)
-
-	if trackedZombies[zombie] then return end
-
-	if not zombie:IsA("Model") then return end
-
-	local humanoid = zombie:FindFirstChildWhichIsA("Humanoid")
-
-	local head = zombie:FindFirstChild("Head")
-
-	if humanoid and head then
-
-		trackedZombies[zombie] = true
-
-		createHealthBar(humanoid, head)
-
-	end
-
-end
-
-for _, zombie in ipairs(ZombiesFolder:GetChildren()) do
-
-	handleZombie(zombie)
-
-end
-
-ZombiesFolder.ChildAdded:Connect(function(child)
-
-	task.wait(0.1)
-
-	handleZombie(child)
-
+    local lastQuarantineCiv = nil
+    while true do
+        task.wait(0.1)
+        
+        if not QuarantineToggle.Value then
+            LblQStatus:SetText("Status:  Paused")
+            continue
+        end
+
+        local civ = getCurrentQuarantine()
+        if not civ then
+            LblQStatus:SetText("please select a person")
+            LblQTarget:SetText("Target:  —")
+            lastQuarantineCiv = nil
+            continue
+        end
+
+        if civ == lastQuarantineCiv then
+            LblQStatus:SetText("Status:  Waiting for next selection...")
+            continue
+        end
+
+        LblQTarget:SetText("Target:  " .. civ.Name)
+        LblQStatus:SetText("Status:  Selected! Waiting 3s...")
+        
+        task.wait(3)
+
+        civ = getCurrentQuarantine()
+        if not civ or civ == lastQuarantineCiv then
+            continue
+        end
+
+        local verdict = "Survivor"
+        local statusVal = civ:FindFirstChild("SymptomStatus")
+        if statusVal then
+            local valStr = tostring(statusVal.Value):lower()
+            if valStr:find("zombie") then
+                verdict = "Liquidation"
+            end
+        end
+
+        LblQVerdict:SetText("Verdict:  " .. verdict)
+        _log("[Quarantine] " .. civ.Name .. " → " .. verdict)
+
+        local SendEvent2 = game:GetService("ReplicatedStorage").Remotes.SendToBlock2
+        SendEvent2:FireServer(verdict)
+
+        LblQStatus:SetText("Status:  ✓ Fired → " .. verdict)
+        lastQuarantineCiv = civ
+    end
 end)
